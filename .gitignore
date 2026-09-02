@@ -1,0 +1,19 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# Soroban test snapshots
+test_snapshots/
+
+# Node.js
+node_modules/
+dist/
+
+# Environment variables
+.env
+backend/.env
+frontend/.env
+
+# Misc
+.DS_Store
+*.log

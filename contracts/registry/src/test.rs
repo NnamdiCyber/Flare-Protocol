@@ -50,9 +50,8 @@ fn test_register_advertiser() {
     assert_eq!(profile.total_spent, 0);
 }
 
-/// Registering the same advertiser twice should panic.
+/// Registering the same advertiser twice should return an error.
 #[test]
-#[should_panic(expected = "advertiser already registered")]
 fn test_register_advertiser_duplicate() {
     let (env, client) = setup();
 
@@ -61,8 +60,10 @@ fn test_register_advertiser_duplicate() {
     let website = String::from_str(&env, "https://acme.example");
 
     client.register_advertiser(&advertiser, &name, &website);
-    // Second call must panic.
-    client.register_advertiser(&advertiser, &name, &website);
+
+    // Second registration must fail.
+    let result = client.try_register_advertiser(&advertiser, &name, &website);
+    assert!(result.is_err(), "duplicate advertiser registration should fail");
 }
 
 /// Registering an earner stores the correct profile data.
@@ -81,17 +82,18 @@ fn test_register_earner() {
     assert_eq!(profile.campaigns_completed, 0);
 }
 
-/// Registering the same earner twice should panic.
+/// Registering the same earner twice should return an error.
 #[test]
-#[should_panic(expected = "earner already registered")]
 fn test_register_earner_duplicate() {
     let (env, client) = setup();
 
     let earner = Address::generate(&env);
 
     client.register_earner(&earner);
-    // Second call must panic.
-    client.register_earner(&earner);
+
+    // Second registration must fail.
+    let result = client.try_register_earner(&earner);
+    assert!(result.is_err(), "duplicate earner registration should fail");
 }
 
 /// Indexing a campaign stores it and increments the advertiser's counter.
@@ -126,9 +128,8 @@ fn test_index_campaign() {
     assert_eq!(profile.total_campaigns, 1);
 }
 
-/// Indexing a campaign for an unregistered advertiser should panic.
+/// Indexing a campaign for an unregistered advertiser should return an error.
 #[test]
-#[should_panic(expected = "advertiser not registered")]
 fn test_index_campaign_unregistered_advertiser() {
     let (env, client) = setup();
 
@@ -136,7 +137,8 @@ fn test_index_campaign_unregistered_advertiser() {
     let asset = Address::generate(&env);
     let cid = campaign_id(&env, 99);
 
-    client.index_campaign(&cid, &stranger, &CampaignType::Social, &asset);
+    let result = client.try_index_campaign(&cid, &stranger, &CampaignType::Social, &asset);
+    assert!(result.is_err(), "indexing for unregistered advertiser should fail");
 }
 
 /// Paginated retrieval returns the correct slice of results.
