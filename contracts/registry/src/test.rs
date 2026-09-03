@@ -50,7 +50,7 @@ fn test_register_advertiser() {
     assert_eq!(profile.total_spent, 0);
 }
 
-/// Registering the same advertiser twice should return an error.
+/// Registering the same advertiser twice returns an error.
 #[test]
 fn test_register_advertiser_duplicate() {
     let (env, client) = setup();
@@ -61,7 +61,6 @@ fn test_register_advertiser_duplicate() {
 
     client.register_advertiser(&advertiser, &name, &website);
 
-    // Second registration must fail.
     let result = client.try_register_advertiser(&advertiser, &name, &website);
     assert!(result.is_err(), "duplicate advertiser registration should fail");
 }
@@ -82,16 +81,14 @@ fn test_register_earner() {
     assert_eq!(profile.campaigns_completed, 0);
 }
 
-/// Registering the same earner twice should return an error.
+/// Registering the same earner twice returns an error.
 #[test]
 fn test_register_earner_duplicate() {
     let (env, client) = setup();
 
     let earner = Address::generate(&env);
-
     client.register_earner(&earner);
 
-    // Second registration must fail.
     let result = client.try_register_earner(&earner);
     assert!(result.is_err(), "duplicate earner registration should fail");
 }
@@ -111,10 +108,8 @@ fn test_index_campaign() {
     );
 
     let cid = campaign_id(&env, 1);
-
     client.index_campaign(&cid, &advertiser, &CampaignType::Referral, &asset);
 
-    // Campaign should appear in the index.
     let campaigns = client.get_campaigns(&None, &0, &10);
     assert_eq!(campaigns.len(), 1);
 
@@ -123,12 +118,11 @@ fn test_index_campaign() {
     assert_eq!(entry.advertiser, advertiser);
     assert_eq!(entry.asset, asset);
 
-    // Advertiser's campaign count should be 1.
     let profile = client.get_advertiser(&advertiser);
     assert_eq!(profile.total_campaigns, 1);
 }
 
-/// Indexing a campaign for an unregistered advertiser should return an error.
+/// Indexing a campaign for an unregistered advertiser returns an error.
 #[test]
 fn test_index_campaign_unregistered_advertiser() {
     let (env, client) = setup();
@@ -155,27 +149,22 @@ fn test_get_campaigns_pagination() {
         &String::from_str(&env, "https://paginator.example"),
     );
 
-    // Index 5 campaigns with different IDs.
     for seed in 1u8..=5 {
         let cid = campaign_id(&env, seed);
-        // Advance ledger timestamp so created_at differs per entry.
         env.ledger().with_mut(|l| l.timestamp += 1);
         client.index_campaign(&cid, &advertiser, &CampaignType::Referral, &asset);
     }
 
-    // Page 0, limit 2 → first two campaigns.
     let page0 = client.get_campaigns(&None, &0, &2);
     assert_eq!(page0.len(), 2);
     assert_eq!(page0.get(0).unwrap().campaign_id, campaign_id(&env, 1));
     assert_eq!(page0.get(1).unwrap().campaign_id, campaign_id(&env, 2));
 
-    // Page 1, limit 2 → next two campaigns.
     let page1 = client.get_campaigns(&None, &1, &2);
     assert_eq!(page1.len(), 2);
     assert_eq!(page1.get(0).unwrap().campaign_id, campaign_id(&env, 3));
     assert_eq!(page1.get(1).unwrap().campaign_id, campaign_id(&env, 4));
 
-    // Page 2, limit 2 → one remaining campaign.
     let page2 = client.get_campaigns(&None, &2, &2);
     assert_eq!(page2.len(), 1);
     assert_eq!(page2.get(0).unwrap().campaign_id, campaign_id(&env, 5));
@@ -195,7 +184,6 @@ fn test_get_campaigns_filter_by_type() {
         &String::from_str(&env, "https://filter.example"),
     );
 
-    // Index 3 Referral campaigns and 2 Social campaigns.
     for seed in 1u8..=3 {
         client.index_campaign(
             &campaign_id(&env, seed),
@@ -219,7 +207,6 @@ fn test_get_campaigns_filter_by_type() {
     let socials = client.get_campaigns(&Some(CampaignType::Social), &0, &10);
     assert_eq!(socials.len(), 2);
 
-    // LearnToEarn filter should return empty.
     let learn = client.get_campaigns(&Some(CampaignType::LearnToEarn), &0, &10);
     assert_eq!(learn.len(), 0);
 }

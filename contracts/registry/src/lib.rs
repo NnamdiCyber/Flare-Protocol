@@ -6,12 +6,30 @@ mod types;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracterror, Address, BytesN, Env, String, Vec};
 
 use storage::{
     get_advertiser, get_campaign_list, get_earner, push_campaign, set_advertiser, set_earner,
 };
 use types::{AdvertiserProfile, CampaignIndex, CampaignType, EarnerProfile};
+
+// ---------------------------------------------------------------------------
+// Contract errors
+// ---------------------------------------------------------------------------
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum RegistryError {
+    AdvertiserAlreadyRegistered = 1,
+    AdvertiserNotFound          = 2,
+    EarnerAlreadyRegistered     = 3,
+    EarnerNotFound              = 4,
+    AdvertiserNotRegistered     = 5,
+}
+
+// ---------------------------------------------------------------------------
+// Registry contract
+// ---------------------------------------------------------------------------
 
 #[contract]
 pub struct RegistryContract;
@@ -22,66 +40,74 @@ impl RegistryContract {
     // Advertiser registration
     // -----------------------------------------------------------------------
 
-    /// Register `address` as an advertiser. The address must authorize this call.
+    /// Register `address` as an advertiser.
     ///
-    /// Open: any wallet can register. Panics if already registered.
-    ///
-    /// Matches README: `register_advertiser(name, website)` — the caller's address
-    /// is passed explicitly so Soroban can enforce `require_auth`.
-    pub fn register_advertiser(env: Env, address: Address, name: String, website: String) {
+    /// Open: any wallet can register. Returns AdvertiserAlreadyRegistered if
+    /// the address is already registered.
+    pub fn register_advertiser(
+        env: Env,
+        address: Address,
+        name: String,
+        website: String,
+    ) -> Result<(), RegistryError> {
         address.require_auth();
 
         if get_advertiser(&env, &address).is_some() {
-            panic!("advertiser already registered");
+            return Err(RegistryError::AdvertiserAlreadyRegistered);
         }
 
-        let profile = AdvertiserProfile {
-            address: address.clone(),
-            name,
-            website,
-            total_campaigns: 0,
-            total_spent: 0,
-            registered_at: env.ledger().timestamp(),
-        };
-
-        set_advertiser(&env, &profile);
+        set_advertiser(
+            &env,
+            &AdvertiserProfile {
+                address: address.clone(),
+                name,
+                website,
+                total_campaigns: 0,
+                total_spent: 0,
+                registered_at: env.ledger().timestamp(),
+            },
+        );
+        Ok(())
     }
 
-    /// Read back an advertiser profile. Panics if not registered.
-    pub fn get_advertiser(env: Env, address: Address) -> AdvertiserProfile {
-        get_advertiser(&env, &address).expect("advertiser not found")
+    /// Read back an advertiser profile. Returns AdvertiserNotFound if missing.
+    pub fn get_advertiser(
+        env: Env,
+        address: Address,
+    ) -> Result<AdvertiserProfile, RegistryError> {
+        get_advertiser(&env, &address).ok_or(RegistryError::AdvertiserNotFound)
     }
 
     // -----------------------------------------------------------------------
     // Earner registration
     // -----------------------------------------------------------------------
 
-    /// Register `address` as an earner. The address must authorize this call.
+    /// Register `address` as an earner.
     ///
-    /// Open: any wallet can register. Panics if already registered.
-    ///
-    /// Matches README: `register_earner()` — caller address passed explicitly
-    /// for `require_auth`.
-    pub fn register_earner(env: Env, address: Address) {
+    /// Open: any wallet can register. Returns EarnerAlreadyRegistered if
+    /// the address is already registered.
+    pub fn register_earner(env: Env, address: Address) -> Result<(), RegistryError> {
         address.require_auth();
 
         if get_earner(&env, &address).is_some() {
-            panic!("earner already registered");
+            return Err(RegistryError::EarnerAlreadyRegistered);
         }
 
-        let profile = EarnerProfile {
-            address: address.clone(),
-            total_earned: 0,
-            campaigns_completed: 0,
-            registered_at: env.ledger().timestamp(),
-        };
-
-        set_earner(&env, &profile);
+        set_earner(
+            &env,
+            &EarnerProfile {
+                address: address.clone(),
+                total_earned: 0,
+                campaigns_completed: 0,
+                registered_at: env.ledger().timestamp(),
+            },
+        );
+        Ok(())
     }
 
-    /// Read back an earner profile. Panics if not registered.
-    pub fn get_earner(env: Env, address: Address) -> EarnerProfile {
-        get_earner(&env, &address).expect("earner not found")
+    /// Read back an earner profile. Returns EarnerNotFound if missing.
+    pub fn get_earner(env: Env, address: Address) -> Result<EarnerProfile, RegistryError> {
+        get_earner(&env, &address).ok_or(RegistryError::EarnerNotFound)
     }
 
     // -----------------------------------------------------------------------
@@ -90,31 +116,32 @@ impl RegistryContract {
 
     /// Index a campaign in the registry.
     ///
-    /// Intended to be called by the Campaign Manager contract on campaign creation.
-    /// The `advertiser` address must already be registered.
+    /// Called by the Campaign Manager on campaign creation.
+    /// Returns AdvertiserNotRegistered if the advertiser is not registered.
     pub fn index_campaign(
         env: Env,
         campaign_id: BytesN<32>,
         advertiser: Address,
         campaign_type: CampaignType,
         asset: Address,
-    ) {
-        let mut adv_profile =
-            get_advertiser(&env, &advertiser).expect("advertiser not registered");
+    ) -> Result<(), RegistryError> {
+        let mut adv_profile = get_advertiser(&env, &advertiser)
+            .ok_or(RegistryError::AdvertiserNotRegistered)?;
 
-        let entry = CampaignIndex {
-            campaign_id,
-            advertiser: advertiser.clone(),
-            campaign_type,
-            asset,
-            created_at: env.ledger().timestamp(),
-        };
+        push_campaign(
+            &env,
+            &CampaignIndex {
+                campaign_id,
+                advertiser: advertiser.clone(),
+                campaign_type,
+                asset,
+                created_at: env.ledger().timestamp(),
+            },
+        );
 
-        push_campaign(&env, &entry);
-
-        // Increment the advertiser's campaign counter.
         adv_profile.total_campaigns += 1;
         set_advertiser(&env, &adv_profile);
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -123,9 +150,9 @@ impl RegistryContract {
 
     /// Return a paginated slice of the campaign index.
     ///
-    /// - `filter`: optionally restrict results to a specific `CampaignType`.
-    /// - `page`:   zero-based page number.
-    /// - `limit`:  maximum number of entries per page.
+    /// - `filter` — optional type filter.
+    /// - `page`   — zero-based page number.
+    /// - `limit`  — maximum entries per page.
     pub fn get_campaigns(
         env: Env,
         filter: Option<CampaignType>,
@@ -134,28 +161,23 @@ impl RegistryContract {
     ) -> Vec<CampaignIndex> {
         let all = get_campaign_list(&env);
         let mut result: Vec<CampaignIndex> = Vec::new(&env);
-
-        // Number of filtered entries seen so far (used for offset calculation).
         let mut filtered_count: u32 = 0;
         let start = page * limit;
 
         for i in 0..all.len() {
             let entry = all.get(i).unwrap();
 
-            // Apply optional type filter.
             if let Some(ref f) = filter {
                 if &entry.campaign_type != f {
                     continue;
                 }
             }
 
-            // Skip entries that belong to earlier pages.
             if filtered_count < start {
                 filtered_count += 1;
                 continue;
             }
 
-            // Stop once the page is full.
             if result.len() >= limit {
                 break;
             }

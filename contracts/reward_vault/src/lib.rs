@@ -141,10 +141,12 @@ impl RewardVaultContract {
             .ok_or(VaultError::CampaignNotFound)?;
 
         // 1. Verify ed25519 signature.
-        // verify_oracle_signature calls env.crypto().ed25519_verify which
-        // panics (host trap) on an invalid signature.  In the test harness,
-        // try_claim catches that trap and returns Err.
-        verify_oracle_signature(&env, &proof, &oracle_pubkey);
+        // In production (WASM), verify_oracle_signature calls the Soroban host's
+        // ed25519_verify which traps on failure. In native test builds it returns
+        // false on bad sig so try_claim can catch it.
+        if !verify_oracle_signature(&env, &proof, &oracle_pubkey) {
+            return Err(VaultError::InvalidSignature);
+        }
 
         // 2. Check nullifier.
         let nullifier = compute_nullifier(&env, &campaign_id, &proof.earner, &proof.action_hash);
