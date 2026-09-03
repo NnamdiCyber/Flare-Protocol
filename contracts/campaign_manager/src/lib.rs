@@ -6,7 +6,7 @@ mod types;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracterror, Address, BytesN, Env, String, Vec};
 
 use storage::{get_all_campaign_ids, get_campaign, push_campaign_id, set_campaign};
 use types::{Campaign, CampaignState, CampaignType};
@@ -14,11 +14,6 @@ use types::{Campaign, CampaignState, CampaignType};
 // ---------------------------------------------------------------------------
 // Cross-contract client stubs
 // ---------------------------------------------------------------------------
-// Soroban cross-contract calls are made via generated client types.  In the
-// no_std test harness we declare minimal interfaces for the two contracts
-// this contract depends on: registry (index_campaign) and reward_vault
-// (deposit / withdraw).  These are declared with `contracttype`-compatible
-// signatures so the Soroban SDK can encode the invocations correctly.
 
 mod registry_client {
     use soroban_sdk::{contractclient, Address, BytesN, Env};
@@ -57,15 +52,34 @@ use registry_client::RegistryClient;
 use vault_client::RewardVaultClient;
 
 // ---------------------------------------------------------------------------
-// Contract-level configuration keys
+// Contract error codes
+// Functions return Result<T, CampaignError> so try_* client methods can catch
+// errors without the process aborting.
 // ---------------------------------------------------------------------------
 
-/// Persistent key for the registry contract address.
+#[contracterror]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum CampaignError {
+    AlreadyInitialized  = 1,
+    NotInitialized      = 2,
+    InvalidBudget       = 3,
+    InvalidExpiry       = 4,
+    InvalidReward       = 5,
+    CampaignIdExists    = 6,
+    CampaignNotFound    = 7,
+    NotActive           = 8,
+    NotPaused           = 9,
+    NotExpiredOrDrained = 10,
+}
+
+// ---------------------------------------------------------------------------
+// Contract-level storage key helpers
+// ---------------------------------------------------------------------------
+
 fn registry_addr_key(env: &Env) -> soroban_sdk::Symbol {
     soroban_sdk::Symbol::new(env, "registry")
 }
 
-/// Persistent key for the reward_vault contract address.
 fn vault_addr_key(env: &Env) -> soroban_sdk::Symbol {
     soroban_sdk::Symbol::new(env, "vault")
 }
@@ -84,12 +98,13 @@ impl CampaignManagerContract {
     // -----------------------------------------------------------------------
 
     /// One-time initialisation — store cross-contract addresses.
-    ///
-    /// Must be called by the deployer immediately after deployment.
-    pub fn initialize(env: Env, registry: Address, reward_vault: Address) {
-        // Guard: only call once.
+    pub fn initialize(
+        env: Env,
+        registry: Address,
+        reward_vault: Address,
+    ) -> Result<(), CampaignError> {
         if env.storage().persistent().has(&registry_addr_key(&env)) {
-            panic!("already initialized");
+            return Err(CampaignError::AlreadyInitialized);
         }
         env.storage()
             .persistent()
@@ -97,41 +112,31 @@ impl CampaignManagerContract {
         env.storage()
             .persistent()
             .set(&vault_addr_key(&env), &reward_vault);
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
     // Campaign creation
     // -----------------------------------------------------------------------
 
-    /// Create a campaign.
-    ///
-    /// The advertiser must authorize this call. Budget must be > 0 and expiry
-    /// must be strictly in the future. On success:
-    ///   1. Campaign record is written to persistent storage.
-    ///   2. Registry contract is called to index the campaign.
-    ///   3. Reward Vault contract is called to lock in the budget.
-    pub fn create_campaign(env: Env, config: Campaign) {
-        // Auth: only the advertiser can create their own campaign.
+    /// Create a campaign. Budget must be > 0; expiry must be in the future.
+    /// Calls registry.index_campaign and reward_vault.deposit.
+    pub fn create_campaign(env: Env, config: Campaign) -> Result<(), CampaignError> {
         config.advertiser.require_auth();
 
-        // Validate inputs.
         if config.total_budget <= 0 {
-            panic!("budget must be greater than zero");
+            return Err(CampaignError::InvalidBudget);
         }
         if config.expiry <= env.ledger().timestamp() {
-            panic!("expiry must be in the future");
+            return Err(CampaignError::InvalidExpiry);
         }
         if config.reward_per_action <= 0 {
-            panic!("reward_per_action must be greater than zero");
+            return Err(CampaignError::InvalidReward);
         }
-
-        // Ensure the campaign ID is not already taken.
         if get_campaign(&env, &config.id).is_some() {
-            panic!("campaign id already exists");
+            return Err(CampaignError::CampaignIdExists);
         }
 
-        // Build the stored campaign — force state to Active and remaining_budget
-        // to total_budget regardless of what the caller supplied.
         let campaign = Campaign {
             remaining_budget: config.total_budget,
             current_participants: 0,
@@ -139,7 +144,6 @@ impl CampaignManagerContract {
             ..config.clone()
         };
 
-        // Persist.
         set_campaign(&env, &campaign);
         push_campaign_id(&env, &campaign.id);
 
@@ -148,9 +152,8 @@ impl CampaignManagerContract {
             .storage()
             .persistent()
             .get(&registry_addr_key(&env))
-            .expect("not initialized");
-        let registry_client = RegistryClient::new(&env, &registry);
-        registry_client.index_campaign(
+            .ok_or(CampaignError::NotInitialized)?;
+        RegistryClient::new(&env, &registry).index_campaign(
             &campaign.id,
             &campaign.advertiser,
             &campaign.campaign_type,
@@ -162,9 +165,11 @@ impl CampaignManagerContract {
             .storage()
             .persistent()
             .get(&vault_addr_key(&env))
-            .expect("not initialized");
-        let vault_client = RewardVaultClient::new(&env, &vault);
-        vault_client.deposit(&campaign.id, &campaign.asset, &campaign.total_budget);
+            .ok_or(CampaignError::NotInitialized)?;
+        RewardVaultClient::new(&env, &vault)
+            .deposit(&campaign.id, &campaign.asset, &campaign.total_budget);
+
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -172,92 +177,102 @@ impl CampaignManagerContract {
     // -----------------------------------------------------------------------
 
     /// Pause an Active campaign. Only the campaign's advertiser may call this.
-    pub fn pause_campaign(env: Env, campaign_id: BytesN<32>) {
-        let mut campaign = Self::load_campaign(&env, &campaign_id);
+    pub fn pause_campaign(
+        env: Env,
+        campaign_id: BytesN<32>,
+    ) -> Result<(), CampaignError> {
+        let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         campaign.advertiser.require_auth();
 
         if campaign.state != CampaignState::Active {
-            panic!("campaign is not active");
+            return Err(CampaignError::NotActive);
         }
         campaign.state = CampaignState::Paused;
         set_campaign(&env, &campaign);
+        Ok(())
     }
 
     /// Resume a Paused campaign. Only the campaign's advertiser may call this.
-    pub fn resume_campaign(env: Env, campaign_id: BytesN<32>) {
-        let mut campaign = Self::load_campaign(&env, &campaign_id);
+    pub fn resume_campaign(
+        env: Env,
+        campaign_id: BytesN<32>,
+    ) -> Result<(), CampaignError> {
+        let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         campaign.advertiser.require_auth();
 
         if campaign.state != CampaignState::Paused {
-            panic!("campaign is not paused");
+            return Err(CampaignError::NotPaused);
         }
         campaign.state = CampaignState::Active;
         set_campaign(&env, &campaign);
+        Ok(())
     }
 
-    /// Drain unspent budget back to the advertiser.
-    ///
-    /// Only callable when the campaign is Expired or Drained. Calls
-    /// `reward_vault.withdraw` which transfers remaining tokens back to the
-    /// advertiser.  Access control: only the advertiser.
-    pub fn drain_campaign(env: Env, campaign_id: BytesN<32>) {
-        let mut campaign = Self::load_campaign(&env, &campaign_id);
+    /// Drain unspent budget. Only allowed when Expired or Drained.
+    /// Auto-expires the campaign if the ledger timestamp >= expiry.
+    pub fn drain_campaign(
+        env: Env,
+        campaign_id: BytesN<32>,
+    ) -> Result<(), CampaignError> {
+        let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         campaign.advertiser.require_auth();
 
         // Auto-expire if past expiry timestamp.
-        if campaign.state == CampaignState::Active
-            || campaign.state == CampaignState::Paused
+        if (campaign.state == CampaignState::Active
+            || campaign.state == CampaignState::Paused)
+            && env.ledger().timestamp() >= campaign.expiry
         {
-            if env.ledger().timestamp() >= campaign.expiry {
-                campaign.state = CampaignState::Expired;
-                set_campaign(&env, &campaign);
-            }
+            campaign.state = CampaignState::Expired;
+            set_campaign(&env, &campaign);
         }
 
         match campaign.state {
             CampaignState::Expired | CampaignState::Drained => {}
-            _ => panic!("campaign must be expired or drained to withdraw"),
+            _ => return Err(CampaignError::NotExpiredOrDrained),
         }
 
-        // Mark as fully drained before the external call.
+        // Checks-effects-interactions: update state before external call.
         campaign.state = CampaignState::Drained;
         campaign.remaining_budget = 0;
         set_campaign(&env, &campaign);
 
-        // Cross-contract: instruct vault to return remaining tokens.
         let vault: Address = env
             .storage()
             .persistent()
             .get(&vault_addr_key(&env))
-            .expect("not initialized");
-        let vault_client = RewardVaultClient::new(&env, &vault);
-        vault_client.withdraw(&campaign_id);
+            .ok_or(CampaignError::NotInitialized)?;
+        RewardVaultClient::new(&env, &vault).withdraw(&campaign_id);
+
+        Ok(())
     }
 
-    /// Update the off-chain metadata URI for a campaign.
-    ///
-    /// Only the campaign's advertiser may call this.
-    pub fn update_metadata(env: Env, campaign_id: BytesN<32>, uri: String) {
-        let mut campaign = Self::load_campaign(&env, &campaign_id);
+    /// Update the off-chain metadata URI. Advertiser only.
+    pub fn update_metadata(
+        env: Env,
+        campaign_id: BytesN<32>,
+        uri: String,
+    ) -> Result<(), CampaignError> {
+        let mut campaign = Self::load_campaign(&env, &campaign_id)?;
         campaign.advertiser.require_auth();
-
         campaign.metadata_uri = uri;
         set_campaign(&env, &campaign);
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
     // Read functions
     // -----------------------------------------------------------------------
 
-    /// Fetch a campaign by ID. Panics if not found.
-    pub fn get_campaign(env: Env, campaign_id: BytesN<32>) -> Campaign {
+    /// Fetch a campaign by ID. Returns CampaignNotFound if missing.
+    pub fn get_campaign(
+        env: Env,
+        campaign_id: BytesN<32>,
+    ) -> Result<Campaign, CampaignError> {
         Self::load_campaign(&env, &campaign_id)
     }
 
-    /// Return a paginated list of campaigns, optionally filtered by type.
-    ///
-    /// Only returns campaigns in the `Active` state.
-    /// `page` is zero-based; `page_size` defaults to 20 if 0 is passed.
+    /// Paginated listing of Active campaigns, optionally filtered by type.
+    /// Page is zero-based. Returns up to 20 campaigns per page.
     pub fn list_active_campaigns(
         env: Env,
         campaign_type: Option<CampaignType>,
@@ -276,19 +291,16 @@ impl CampaignManagerContract {
                 None => continue,
             };
 
-            // Only Active campaigns.
             if campaign.state != CampaignState::Active {
                 continue;
             }
 
-            // Optional type filter.
             if let Some(ref ct) = campaign_type {
                 if &campaign.campaign_type != ct {
                     continue;
                 }
             }
 
-            // Skip earlier pages.
             if filtered_count < start {
                 filtered_count += 1;
                 continue;
@@ -309,7 +321,7 @@ impl CampaignManagerContract {
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    fn load_campaign(env: &Env, id: &BytesN<32>) -> Campaign {
-        get_campaign(env, id).expect("campaign not found")
+    fn load_campaign(env: &Env, id: &BytesN<32>) -> Result<Campaign, CampaignError> {
+        get_campaign(env, id).ok_or(CampaignError::CampaignNotFound)
     }
 }
