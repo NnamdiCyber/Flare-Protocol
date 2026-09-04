@@ -1,0 +1,101 @@
+// This is your Prisma schema file.
+// Reference: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Advertiser {
+  id             String   @id @default(uuid())
+  stellarAddress String   @unique
+  name           String
+  website        String
+  createdAt      DateTime @default(now())
+}
+
+model Earner {
+  id                  String   @id @default(uuid())
+  stellarAddress      String   @unique
+  totalEarned         BigInt   @default(0)
+  campaignsCompleted  Int      @default(0)
+  createdAt           DateTime @default(now())
+}
+
+model Campaign {
+  id                String   @id @default(uuid())
+  /// On-chain campaign ID as hex string (32 bytes)
+  campaignId        String   @unique
+  advertiserAddress String
+  campaignType      String
+  asset             String
+  status            String   @default("Active")
+  createdAt         DateTime @default(now())
+
+  referrals           Referral[]
+  socialVerifications SocialVerification[]
+  learnSubmissions    LearnSubmission[]
+  attentionSessions   AttentionSession[]
+}
+
+model Referral {
+  id              String    @id @default(uuid())
+  /// Unique slug embedded in the referral link
+  slug            String    @unique
+  campaignId      String
+  referrerAddress String
+  refereeAddress  String?
+  convertedAt     DateTime?
+  proofIssued     Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [campaignId])
+}
+
+model SocialVerification {
+  id             String    @id @default(uuid())
+  campaignId     String
+  earnerAddress  String
+  postUrl        String
+  platform       String
+  verifiedAt     DateTime?
+  proofIssued    Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [campaignId])
+
+  @@unique([campaignId, earnerAddress])
+}
+
+model LearnSubmission {
+  id            String   @id @default(uuid())
+  campaignId    String
+  earnerAddress String
+  score         Float
+  passed        Boolean
+  submittedAt   DateTime @default(now())
+  proofIssued   Boolean  @default(false)
+
+  campaign Campaign @relation(fields: [campaignId], references: [campaignId])
+
+  @@unique([campaignId, earnerAddress])
+}
+
+model AttentionSession {
+  id              String   @id @default(uuid())
+  campaignId      String
+  earnerAddress   String
+  sessionToken    String   @unique
+  durationSeconds Int      @default(0)
+  completed       Boolean  @default(false)
+  proofIssued     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [campaignId])
+
+  @@unique([campaignId, earnerAddress])
+}
