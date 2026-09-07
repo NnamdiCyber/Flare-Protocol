@@ -99,3 +99,14 @@ model AttentionSession {
 
   @@unique([campaignId, earnerAddress])
 }
+
+/// Answer key stored by the advertiser when creating a learn-to-earn campaign.
+/// answers is a JSON map of { questionId: correctAnswer }.
+model LearnAnswerKey {
+  id            String @id @default(uuid())
+  campaignId    String @unique
+  /// JSON: Record<string, string> — question ID → correct answer
+  answers       Json
+  /// Pass threshold as a percentage 0–100
+  passThreshold Float  @default(80)
+}
