@@ -4,6 +4,7 @@ import configuration from './config/configuration';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma.module';
+import { RedisModule } from './common/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { OracleModule } from './oracle/oracle.module';
@@ -20,6 +21,7 @@ import { EventsModule } from './events/events.module';
       load: [configuration],
     }),
     PrismaModule,
+    RedisModule,
     AuthModule,
     CampaignsModule,
     OracleModule,
