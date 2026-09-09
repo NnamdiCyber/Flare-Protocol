@@ -1,0 +1,97 @@
+<div class="campaigns-view">
+
+  <h2 style="margin-bottom: 24px; color: #ff6b00;">🔥 Active Campaigns</h2>
+
+  <!-- Loading state -->
+  <div ng-if="loading" style="color: #aaa; text-align: center; padding: 48px 0;">
+    Loading campaigns…
+  </div>
+
+  <!-- Error state -->
+  <div ng-if="error && !loading" style="color: #ff4444; background: #2a1111;
+       padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+    {{ error }}
+  </div>
+
+  <!-- Empty state -->
+  <div ng-if="!loading && !error && campaigns.length === 0"
+       style="color: #aaa; text-align: center; padding: 48px 0;">
+    No active campaigns at the moment. Check back soon!
+  </div>
+
+  <!-- Campaign grid -->
+  <div ng-if="!loading && campaigns.length > 0"
+       style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+              gap: 20px;">
+
+    <div ng-repeat="campaign in campaigns" class="campaign-card"
+         style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+                padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+
+      <!-- Type badge + campaign ID -->
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="background: #2a2a2a; color: #ff6b00; padding: 4px 10px;
+                     border-radius: 20px; font-size: 0.78rem; font-weight: 600;">
+          {{ campaignTypeLabel(campaign.campaign_type || campaign.campaignType) }}
+        </span>
+        <span style="color: #555; font-size: 0.72rem;" title="{{ campaign.id }}">
+          #{{ campaign.id | limitTo:8 }}
+        </span>
+      </div>
+
+      <!-- Metadata URI / title (if available) -->
+      <div ng-if="campaign.metadata_uri || campaign.metadataUri"
+           style="color: #ccc; font-size: 0.85rem; word-break: break-all;">
+        <a ng-href="{{ campaign.metadata_uri || campaign.metadataUri }}"
+           target="_blank" style="color: #aaa; text-decoration: none;">
+          {{ campaign.metadata_uri || campaign.metadataUri | limitTo:60 }}…
+        </a>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+
+        <div style="flex: 1; min-width: 120px;">
+          <div style="color: #666; font-size: 0.72rem; text-transform: uppercase;
+                      letter-spacing: 0.05em; margin-bottom: 4px;">Reward / Action</div>
+          <div style="color: #fff; font-size: 1rem; font-weight: 600;">
+            {{ (campaign.reward_per_action || campaign.rewardPerAction) / 10000000 | number:2 }}
+            <span style="color: #aaa; font-size: 0.8rem;">
+              {{ shortAsset(campaign.asset) }}
+            </span>
+          </div>
+        </div>
+
+        <div style="flex: 1; min-width: 120px;">
+          <div style="color: #666; font-size: 0.72rem; text-transform: uppercase;
+                      letter-spacing: 0.05em; margin-bottom: 4px;">Remaining Budget</div>
+          <div style="color: #fff; font-size: 1rem; font-weight: 600;">
+            {{ (campaign.remaining_budget || campaign.remainingBudget) / 10000000 | number:2 }}
+            <span style="color: #aaa; font-size: 0.8rem;">
+              {{ shortAsset(campaign.asset) }}
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Participants -->
+      <div style="color: #666; font-size: 0.8rem;">
+        {{ campaign.current_participants || campaign.currentParticipants || 0 }}
+        / {{ campaign.max_participants || campaign.maxParticipants || '∞' }} participants
+      </div>
+
+      <!-- Participate button -->
+      <button ng-click="participate(campaign)"
+              style="margin-top: auto; padding: 10px; background: #ff6b00; color: #fff;
+                     border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem;
+                     font-weight: 600; transition: background 0.2s;"
+              onmouseover="this.style.background='#e05d00'"
+              onmouseout="this.style.background='#ff6b00'">
+        {{ walletConnected ? 'Participate' : 'Connect Wallet to Participate' }}
+      </button>
+
+    </div>
+  </div>
+
+</div>
