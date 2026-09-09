@@ -1,0 +1,130 @@
+<div class="create-campaign-view" style="max-width: 560px;">
+
+  <h2 style="margin-bottom: 24px; color: #ff6b00;">Create Campaign</h2>
+
+  <!-- Wallet not connected warning -->
+  <div ng-if="!walletAddress" style="background: #2a1a0a; border: 1px solid #5a3a0a;
+       border-radius: 8px; padding: 14px; margin-bottom: 20px; color: #ffaa55;
+       font-size: 0.88rem;">
+    ⚠️ Connect your Freighter wallet to create a campaign.
+  </div>
+
+  <!-- Success state -->
+  <div ng-if="submitted" style="background: #0a2a1a; border: 1px solid #0a5a2a;
+       border-radius: 8px; padding: 16px; color: #55ffaa;">
+    ✅ Campaign submitted! On-chain deployment is being set up — full submission wired post Day 5.
+  </div>
+
+  <!-- Form -->
+  <form ng-if="!submitted" ng-submit="submit()" style="display: flex; flex-direction: column;
+        gap: 18px;">
+
+    <!-- Campaign type -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Campaign Type
+      </label>
+      <select ng-model="campaign.campaignType" ng-options="t for t in campaignTypes"
+              style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                     border-radius: 6px; color: #fff; font-size: 0.9rem;">
+      </select>
+    </div>
+
+    <!-- Asset contract address -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Reward Asset Contract Address (SEP-0041)
+      </label>
+      <input type="text" ng-model="campaign.asset" placeholder="C…"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem; font-family: monospace;" />
+    </div>
+
+    <!-- Reward per action -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Reward per Action (stroops — 1 XLM = 10,000,000)
+      </label>
+      <input type="number" ng-model="campaign.rewardPerAction" placeholder="e.g. 10000000"
+             min="1"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+    </div>
+
+    <!-- Total budget -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Total Budget (stroops)
+      </label>
+      <input type="number" ng-model="campaign.totalBudget" placeholder="e.g. 1000000000"
+             min="1"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+    </div>
+
+    <!-- Max participants -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Max Participants (0 = unlimited)
+      </label>
+      <input type="number" ng-model="campaign.maxParticipants" placeholder="0"
+             min="0"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+    </div>
+
+    <!-- Expiry date -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Campaign Expiry Date
+      </label>
+      <input type="datetime-local" ng-model="campaign.expiry"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+    </div>
+
+    <!-- Min proof threshold -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Min Proof Threshold (% for learn-to-earn / follower count for social)
+      </label>
+      <input type="number" ng-model="campaign.minProofThreshold" placeholder="0"
+             min="0"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+    </div>
+
+    <!-- Metadata URI -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Metadata URI (IPFS / Arweave link for campaign details + ad creative)
+      </label>
+      <input type="url" ng-model="campaign.metadataUri" placeholder="ipfs://…"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem;" />
+    </div>
+
+    <!-- Oracle public key -->
+    <div>
+      <label style="color: #aaa; font-size: 0.82rem; display: block; margin-bottom: 6px;">
+        Oracle Public Key (hex — from /oracle/pubkey)
+      </label>
+      <input type="text" ng-model="campaign.oraclePubkey" placeholder="32-byte hex"
+             style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+                    border-radius: 6px; color: #fff; font-size: 0.9rem; font-family: monospace;" />
+    </div>
+
+    <!-- Error -->
+    <div ng-if="error" style="color: #ff4444; font-size: 0.85rem;">{{ error }}</div>
+
+    <!-- Submit -->
+    <button type="submit" ng-disabled="submitting"
+            style="padding: 12px; background: #ff6b00; color: #fff; border: none;
+                   border-radius: 8px; cursor: pointer; font-size: 0.95rem;
+                   font-weight: 600; transition: background 0.2s;">
+      {{ submitting ? 'Submitting…' : 'Create Campaign' }}
+    </button>
+
+  </form>
+
+</div>
