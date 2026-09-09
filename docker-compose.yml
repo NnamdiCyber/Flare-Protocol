@@ -1,0 +1,45 @@
+version: "3.9"
+
+# Flare Protocol local development infrastructure.
+# Provides PostgreSQL and Redis for the NestJS oracle backend.
+#
+# Usage:
+#   docker compose up -d postgres redis
+#   docker compose down          # stop services
+#   docker compose down -v       # stop and remove volumes (data reset)
+
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: flare_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: flare
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d flare"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: flare_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
