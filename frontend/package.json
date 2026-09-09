@@ -1,0 +1,31 @@
+{
+  "name": "flare-protocol-frontend",
+  "version": "0.1.0",
+  "description": "Flare Protocol AngularJS frontend — Advertiser and Earner portals",
+  "private": true,
+  "scripts": {
+    "start": "webpack-dev-server --mode development --open",
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development"
+  },
+  "dependencies": {
+    "angular": "1.8.3",
+    "angular-route": "1.8.3",
+    "angular-ui-router": "1.0.30",
+    "@stellar/freighter-api": "^1.7.1",
+    "@stellar/stellar-sdk": "^13.3.0"
+  },
+  "devDependencies": {
+    "webpack": "^5.96.1",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.1.0",
+    "html-webpack-plugin": "^5.6.3",
+    "copy-webpack-plugin": "^12.0.2",
+    "css-loader": "^7.1.2",
+    "style-loader": "^4.0.0",
+    "mini-css-extract-plugin": "^2.9.2",
+    "babel-loader": "^9.2.1",
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0"
+  }
+}
